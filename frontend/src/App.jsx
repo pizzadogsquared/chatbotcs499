@@ -260,7 +260,7 @@ function App() {
           </div>
 
           <article className="prompt-card">
-            {drill ? <pre className="formatted-block">{drill}</pre> : <p>Generate a drill to begin.</p>}
+            {drill ? <FormattedMessage content={drill} /> : <p>Generate a drill to begin.</p>}
           </article>
 
           <label className="attempt-block">
@@ -284,7 +284,11 @@ function App() {
               <Gauge size={18} />
               <h2>Coach Feedback</h2>
             </div>
-            {review ? <pre className="formatted-block">{review}</pre> : <p>Feedback will appear here after you submit an attempt.</p>}
+            {review ? (
+              <FormattedMessage content={review} />
+            ) : (
+              <p>Feedback will appear here after you submit an attempt.</p>
+            )}
           </div>
         </section>
 
@@ -414,55 +418,57 @@ function parseMessage(content) {
 
     paragraphs.forEach((paragraph) => {
       const lines = paragraph.split("\n").map((line) => line.trim()).filter(Boolean);
+      let currentParagraph = [];
+      let currentList = null;
 
-      if (lines.length && lines.every((line) => /^\d+\.\s+/.test(line))) {
-        blocks.push({
-          type: "ordered",
-          items: lines.map((line) => line.replace(/^\d+\.\s+/, "")),
-        });
-        return;
+      function flushParagraph() {
+        if (!currentParagraph.length) {
+          return;
+        }
+
+        blocks.push({ type: "paragraph", content: currentParagraph.join(" ") });
+        currentParagraph = [];
       }
 
-      if (lines.length && lines.every((line) => /^[-*]\s+/.test(line))) {
-        blocks.push({
-          type: "unordered",
-          items: lines.map((line) => line.replace(/^[-*]\s+/, "")),
-        });
-        return;
+      function flushList() {
+        if (!currentList || !currentList.items.length) {
+          return;
+        }
+
+        blocks.push(currentList);
+        currentList = null;
       }
 
-      if (lines.length > 1) {
-        const rebuilt = [];
+      lines.forEach((line) => {
+        const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+        const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
 
-        lines.forEach((line) => {
-          if (/^\d+\.\s+/.test(line) || /^[-*]\s+/.test(line)) {
-            rebuilt.push(`\n${line}`);
-          } else {
-            rebuilt.push(line);
+        if (orderedMatch) {
+          flushParagraph();
+          if (!currentList || currentList.type !== "ordered") {
+            flushList();
+            currentList = { type: "ordered", items: [] };
           }
-        });
-
-        const rewritten = rebuilt.join(" ").replace(/\s*\n\s*/g, "\n");
-        const rewrittenLines = rewritten.split("\n").map((line) => line.trim()).filter(Boolean);
-
-        if (rewrittenLines.length && rewrittenLines.every((line) => /^\d+\.\s+/.test(line))) {
-          blocks.push({
-            type: "ordered",
-            items: rewrittenLines.map((line) => line.replace(/^\d+\.\s+/, "")),
-          });
+          currentList.items.push(orderedMatch[2]);
           return;
         }
 
-        if (rewrittenLines.length && rewrittenLines.every((line) => /^[-*]\s+/.test(line))) {
-          blocks.push({
-            type: "unordered",
-            items: rewrittenLines.map((line) => line.replace(/^[-*]\s+/, "")),
-          });
+        if (unorderedMatch) {
+          flushParagraph();
+          if (!currentList || currentList.type !== "unordered") {
+            flushList();
+            currentList = { type: "unordered", items: [] };
+          }
+          currentList.items.push(unorderedMatch[1]);
           return;
         }
-      }
 
-      blocks.push({ type: "paragraph", content: lines.join(" ") });
+        flushList();
+        currentParagraph.push(line);
+      });
+
+      flushList();
+      flushParagraph();
     });
   }
 
